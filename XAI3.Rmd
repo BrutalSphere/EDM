@@ -1,0 +1,158 @@
+---
+title: "XAI 3: Model-Agnostic methods"
+output: html_notebook
+---
+
+## EXERCISE:
+
+Apply PDP to the regression example of predicting bike rentals. Fit a random forest approximation for the prediction of bike rentals (**cnt**). Use the partial dependence plot to visualize the relationships the model learned. Use the slides shown in class as model.  
+
+## QUESTION:
+
+Analyse the influence of **days since 2011, temperature, humidity** and **wind speed** on the predicted bike counts.
+
+
+Days since 2011: we found a positive correlation between the number of days since 2011 and the predicted bike count (ranging from around 2800 to almost 6000). We may predict that as more time goes by, the number of the rental bike increases more. However, the increase pattern is a bit weird, e.g., in the beginning, it raises a lot but then stops for around two hundred days,  and then increases sharply again, and finally drops a little bit when the number of days since 2011 is above 650 approximately.
+
+
+Temperature: as the temperature increases, the model generally predicts a higher bike counts (from 3000 to 5200 approximately). However, the predicted value decreases when the temperature reaches around 25 degrees Celsius. This may make sense since humans prefer to work out when the temperature is comfortable (e.g. between 15-25 degrees) rather than when the environment is too cold or too hot.
+
+Humidity: The humidity does not influence the prediction of the bike count significantly when humidity is below 50; noteworthy, the number of instances with humidity below 25 is very small, which means the aforementioned interpretation may not be statistically significant. When humidity is above 50, the predicted rental bike drops almost linearly as the humidity increases.
+
+
+Wind Speed: As the wind speed increase, the higher the predicted value bike counts is (except for wind speed above 25, where we see no significant changes in the prediction, possibly also because there is very little data).
+
+```{r}
+library(dplyr)
+library(plotly)
+library(reshape2)
+library(lubridate)
+library(randomForestSRC)
+set.seed(1)
+#setwd("/Users/cmonserr/OneDrive - UPV/Trabajo_2/Asignaturas/Evaluacion de modelos/Practicas/Practica 3/Bike-Sharing-Dataset")
+days <- read.csv("day.csv")
+hour <- read.csv("hour.csv")
+
+days$dteday <- as_date(days$dteday)
+days_since <- select(days, workingday, holiday, temp, hum, windspeed, cnt)
+days_since$days_since_2011 <- int_length(interval(ymd("2011-01-01"), days$dteday)) / (3600*24)
+days_since$SUMMER <- ifelse(days$season == 3, 1, 0)
+days_since$FALL <- ifelse(days$season == 4, 1, 0)
+days_since$WINTER <- ifelse(days$season == 1, 1, 0)
+days_since$MISTY <- ifelse(days$weathersit == 2, 1, 0)
+days_since$RAIN <- ifelse(days$weathersit == 3 | days$weathersit == 4, 1, 0)
+days_since$temp <- days_since$temp * 47 - 8
+days_since$hum <- days_since$hum * 100
+days_since$windspeed <- days_since$windspeed * 67
+
+rf <- rfsrc(cnt~., data=days_since)
+
+results <- select(days_since, days_since_2011, temp, hum, windspeed, cnt)
+nr <- nrow(days_since)
+for(c in names(results)[1:4])
+{
+  for(i in 1:nr){
+    r <- days_since
+    r[[c]] <- days_since[[c]][i]
+    sal <- predict(rf, r)$predicted
+    results[[c]][i] <- sum(sal) / nr
+  }
+}
+
+
+p1 <- ggplot(days_since, aes(x=days_since_2011, y = results$days_since_2011)) + geom_line() + geom_rug(alpha=0.1, sides="b") + ylim(0, 6000) + xlab("Days since 2011") + ylab("Prediction")
+p2 <- ggplot(days_since, aes(x=temp, y = results$temp)) + geom_line() + geom_rug(alpha=0.1, sides="b") + ylim(0, 6000) + xlab("Temperature") + ylab(NULL)
+p3 <- ggplot(days_since, aes(x=hum , y = results$hum)) + geom_line() + geom_rug(alpha=0.1, sides="b") + ylim(0, 6000) + xlab("Humidity") + ylab(NULL)
+p4 <- ggplot(days_since, aes(x=windspeed, y = results$windspeed)) + geom_line() + geom_rug(alpha=0.1, sides="b") + ylim(0, 6000) + xlab("Wind speed") + ylab(NULL)
+
+
+ggpubr::ggarrange(p1, p2, p3, p4, nrow=1)
+
+
+```
+
+## EXERCISE:
+
+Generate a 2D Partial Dependency Plot with humidity and temperature to predict the number of bikes rented depending of those parameters.
+
+BE CAREFUL: due to the size, extract a set of random samples from the BBDD before generating the the data for the Partial Dependency Plot. 
+
+Show the density distribution of both input features with the 2D plot as shown in the class slides. 
+
+TIP: Use geom_tile() to generate the 2D plot. Set width and height to avoid holes. 
+
+## QUESTION:
+
+Interpret the results. 
+
+Assuming the number of instances in different areas are significant:
+
+As before, we found that "the higher the temperature, the higher the predicted bike count when the temperature below 25, and then it decreases". When fusing temperature with humidity, we found that as the humidity increases, the predicted bike count decreases significantly monotonically (even if the temperature is very comfortable). This interaction seems to be the same across all ranges of temperature values and vice versa. Such an argument may make sense since high temperature with high humidity or low temperature with low humidity is very uncomfortable to do sports.
+
+
+```{r}
+set.seed(6)
+sampled <- sample_n(days_since, 40)
+temp <- sampled$temp
+hum <- sampled$hum
+th <- inner_join(data.frame(temp),data.frame(hum), by=character())
+th$p <- 0
+
+for(i in 1:nrow(th)){
+  r <- days_since
+  r[["temp"]] <- th[["temp"]][i]
+  r[["hum"]] <- th[["hum"]][i]
+  
+  sal <- predict(rf, r)$predicted
+  th[["p"]][i] <- sum(sal) / nr
+}
+
+
+```
+
+
+## EXERCISE:
+
+Apply the previous concepts to predict the **price** of a house from the database **kc_house_data.csv**. In this case, use again a random forest approximation for the prediction based on the features **bedrooms**, **bathrooms**, **sqft_living**, **sqft_lot**, **floors** and **yr_built**. 
+
+Use the partial dependence plot to visualize the relationships the model learned.
+
+BE CAREFUL: due to the size, extract a set of random samples from the BBDD before generating the data for the Partial Dependency Plot. 
+
+## QUESTION:
+
+Analyse the influence of **bedrooms, bathrooms, sqft_living** and **floors** on the predicted price.
+
+bedrooms: The estimated price increases from 1 bedroom to 2 bedrooms (makes sense). However, the predicted price generally decreases until 5 bedrooms, and then it increases slightly. It's a weird pattern and a bit unintuitive.
+
+bathrooms: the estimated price increases as the number of bathrooms increases, but there seems to be no difference between 4 and 5 bathrooms (also possibly because the number of instances is minimal). Such a phenomenon appears to make sense because more bathrooms may be inevitably related to the quality of a house.
+
+sqft_living: the estimated price increases significantly (similar to a linear pattern) as the square footage of the home increases. Makes sense...
+
+Floors: the estimated value of the house increases monotonically as the number of floors increases (from 1 to 3). This is possible because people don't like living on floor 1 or 2 since these floors generally have more street noises.
+
+```{r}
+
+d <- read.csv("kc_house_data.csv")
+
+sampled <- sample_n(d, 1000)
+
+sampled <- select(sampled, bedrooms, bathrooms, sqft_living, sqft_lot, floors, yr_built, price)
+
+rf <- rfsrc(price~., data=sampled)
+
+results <- select(sampled, bedrooms, bathrooms, sqft_living, floors, price)
+nr <- nrow(sampled)
+for(c in names(results)[1:4])
+{
+  for(i in 1:nr){
+    r <- sampled
+    r[[c]] <- sampled[[c]][i]
+    sal <- predict(rf, r)$predicted
+    results[[c]][i] <- sum(sal) / nr
+  }
+}
+
+
+```
+
