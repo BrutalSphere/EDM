@@ -107,7 +107,7 @@ for(i in 1:nrow(th)){
   th[["p"]][i] <- sum(sal) / nr
 }
 
-
+ggplot(th, mapping=aes(temp, hum)) + geom_tile(mapping=aes(fill= p, width = 8, height=8)) + geom_rug()
 ```
 
 
